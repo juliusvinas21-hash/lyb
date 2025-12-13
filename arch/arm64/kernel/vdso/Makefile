@@ -6,6 +6,13 @@
 # Heavily based on the vDSO Makefiles for other archs.
 #
 
+# ---------------------------------------------------------------------
+# FIX: Kernel 4.14 + Clang
+# VDSO ARM64 MUST be linked with GNU ld (bfd), NOT lld.
+# This prevents: /bin/sh: 1: -maarch64elf: not found
+# ---------------------------------------------------------------------
+LD := $(CROSS_COMPILE)ld.bfd
+
 obj-vdso-s := note.o sigreturn.o
 obj-vdso-c := vgettimeofday.o
 
@@ -15,8 +22,8 @@ obj-vdso-s := $(addprefix $(obj)/, $(obj-vdso-s))
 obj-vdso-c := $(addprefix $(obj)/, $(obj-vdso-c))
 obj-vdso   := $(obj-vdso-c) $(obj-vdso-s)
 
-ldflags-y := -shared -nostdlib -soname=linux-vdso.so.1  --hash-style=sysv \
-		--build-id -n -T
+ldflags-y := -shared -nostdlib -soname=linux-vdso.so.1 --hash-style=sysv \
+	--build-id -n -T
 ccflags-y := -fno-stack-protector
 ccflags-y += -DDISABLE_BRANCH_PROFILING -ffixed-x18
 ccflags-y += $(call cc-option, -fno-whole-program)
@@ -75,7 +82,7 @@ $(obj-vdso-c): %.o: %.c FORCE
 
 # Actual build commands
 quiet_cmd_vdsocc = VDSOC   $@
-      cmd_vdsocc = ${CC} $(c_flags) -c -o $@ $<
+      cmd_vdsocc = $(CC) $(c_flags) -c -o $@ $<
 quiet_cmd_vdsoas = VDSOA   $@
       cmd_vdsoas = $(CC) $(a_flags) -c -o $@ $<
 
