@@ -1,119 +1,89 @@
-name: Build Kernel (4.9 - crDroid)
+name: Build Kernel (Performance - vayu 4.14)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 0 * * 6"
   push:
-    branches:
-      - HEAD
+    branches: [ HEAD ]
   pull_request:
-    branches:
-      - HEAD
+    branches: [ HEAD ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     env:
+      ARCH: arm64
+      KERNEL_DEFCONFIG: vayu_user_defconfig
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_MAXSIZE: "2G"
       CCACHE_HARDLINK: "true"
-      KERNEL_DEFCONFIG: "vayu_user_defconfig"
-      KERNEL_CMDLINE: "ARCH=arm64 CC=clang CLANG_TRIPLE=aarch64-linux-gnu- CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- O=out"
 
     steps:
-      - name: Checkout
+      - name: Checkout kernel source
         uses: actions/checkout@v4
         with:
-          submodules: "true"
-          fetch-depth: 100
+          fetch-depth: 0
 
-      - name: Set up ccache
+      - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
 
-      - name: Install dependencies & toolchain
+      - name: Install build dependencies
         run: |
           sudo apt-get update -y
-
-          # Toolchain & build deps
-          sudo apt install -y \
+          sudo apt-get install -y \
             gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-            aria2 binutils make python3 libssl-dev build-essential \
-            bc bison flex unzip ca-certificates xz-utils \
-            mkbootimg cpio device-tree-compiler git git-lfs curl wget
+            binutils bc bison flex make \
+            python3 python2 \
+            libssl-dev build-essential \
+            unzip xz-utils cpio \
+            device-tree-compiler \
+            git git-lfs curl wget
 
-          # python2 (dibutuhkan rule dtbo.img). Kalau paketnya tidak ada,
-          # buat symlink python2 -> python3
-          sudo apt-get install -y python2 || true
-          if ! command -v python2 >/dev/null 2>&1; then
-            echo "python2 package not available, creating symlink python2 -> python3"
+          if ! command -v python2 >/dev/null; then
             sudo ln -sf /usr/bin/python3 /usr/bin/python2
           fi
 
-          # Toolchain (crDroid clang-r547379)
-          git clone --depth=1 \
-            https://gitlab.com/crdroidandroid/android_prebuilts_clang_host_linux-x86_clang-r547379.git \
-            google-clang
-         
-          # Ganti mkdtboimg.py dengan versi Python3 dari AOSP (fix error str/bytes)
+      - name: Clone Android Clang (AOSP)
+        run: |
+          git clone --depth=1 https://github.com/Kry9toN/clang.git clang
+          echo "$(pwd)/clang/clang-r450784d/bin" >> $GITHUB_PATH
+
+      - name: Fix mkdtboimg.py (Python3)
+        run: |
           MKDTBO_PATH="scripts/dtc/libfdt/mkdtboimg.py"
-          echo ">>> Replacing mkdtboimg.py with Python3 version from AOSP"
           curl -L "https://android.googlesource.com/platform/system/libufdt/+/refs/heads/main/utils/src/mkdtboimg.py?format=TEXT" \
             | base64 --decode > "$MKDTBO_PATH"
           chmod +x "$MKDTBO_PATH"
 
-      - name: GetTime
-        id: get_time
-        run: echo "TIME=$(TZ=UTC+3 date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Build Kernel-With-KernelSU (with logging)
+      - name: Build defconfig
         run: |
-          export PATH="$(pwd)/google-clang/bin/:$PATH"
-          export LD=ld.lld
+          make ARCH=arm64 O=out \
+            CC="ccache clang" \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            $KERNEL_DEFCONFIG
 
-          echo ">>> Starting defconfig build..."
-          make $KERNEL_CMDLINE $KERNEL_DEFCONFIG CC="ccache clang" 2>&1 | tee build_defconfig.log
-
-          echo ">>> Starting kernel compilation (Image + dtbo.img)..."
-          make $KERNEL_CMDLINE CC="ccache clang" -j"$(nproc --all)" Image dtbo.img 2>&1 | tee build_kernel.log
-
-          BUILD_RESULT=${PIPESTATUS[0]}
-          if [ "$BUILD_RESULT" -ne 0 ]; then
-            echo "❌ Kernel build failed. Logs will be uploaded."
-            exit 1
-          fi
-
-      - name: Run Kernel Patcher
+      - name: Build kernel Image + dtbo
         run: |
-          cd out/arch/arm64/boot/
-          echo "Downloading patcher..."
-          wget -q https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.2/patch_linux
-          chmod +x patch_linux
+          make ARCH=arm64 O=out \
+            CC="ccache clang" \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            -j$(nproc) \
+            Image dtbo.img
 
-          echo "Patching kernel image..."
-          ./patch_linux || { echo "Error: Patching failed!" >&2; exit 1; }
+      - name: Verify compiler
+        run: |
+          grep CONFIG_CC_VERSION_TEXT out/.config
 
-          rm -f Image
-          mv oImage Image
-          cd -
-
-      - name: Upload Build Logs
-        if: always()
+      - name: Upload outputs
         uses: actions/upload-artifact@v4
         with:
-          name: Build_Logs-${{ steps.get_time.outputs.TIME }}
-          path: |
-            build_defconfig.log
-            build_kernel.log
-            patch.log
-            out/arch/arm64/boot/.config
-
-      - name: Upload Raw Outputs
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: Raw_Kernel-${{ steps.get_time.outputs.TIME }}
+          name: Performance-Kernel
           path: |
             out/arch/arm64/boot/Image
             out/arch/arm64/boot/dtbo.img
+            out/.config
