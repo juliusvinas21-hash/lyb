@@ -30,20 +30,23 @@ jobs:
 
       - name: Install build dependencies
         run: |
-         sudo apt-get update -y
-         sudo apt-get install -y \
-         gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-         binutils bc bison flex make \
-         python3 \
-         libssl-dev build-essential \
-         unzip xz-utils cpio \
-         device-tree-compiler \
-         git git-lfs curl wget
-         if ! command -v python2 >/dev/null 2>&1; then
-         sudo ln -sf /usr/bin/python3 /usr/bin/python2
-         fi
-         
-      - name: Clone Android Clang (AOSP)
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+            binutils binutils-aarch64-linux-gnu \
+            bc bison flex make \
+            python3 \
+            libssl-dev build-essential \
+            unzip xz-utils cpio \
+            device-tree-compiler \
+            git git-lfs curl wget
+
+          # python2 compatibility for legacy scripts
+          if ! command -v python2 >/dev/null 2>&1; then
+            sudo ln -sf /usr/bin/python3 /usr/bin/python2
+          fi
+
+      - name: Clone Android Clang (AOSP Clang 14)
         run: |
           git clone --depth=1 https://github.com/Kry9toN/clang.git clang
           echo "$(pwd)/clang/clang-r450784d/bin" >> $GITHUB_PATH
@@ -59,6 +62,7 @@ jobs:
         run: |
           make ARCH=arm64 O=out \
             CC="ccache clang" \
+            LD=aarch64-linux-gnu-ld.bfd \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
@@ -68,15 +72,17 @@ jobs:
         run: |
           make ARCH=arm64 O=out \
             CC="ccache clang" \
+            LD=aarch64-linux-gnu-ld.bfd \
             CLANG_TRIPLE=aarch64-linux-gnu- \
             CROSS_COMPILE=aarch64-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             -j$(nproc) \
             Image dtbo.img
 
-      - name: Verify compiler
+      - name: Verify compiler & linker
         run: |
           grep CONFIG_CC_VERSION_TEXT out/.config
+          aarch64-linux-gnu-ld.bfd --version
 
       - name: Upload outputs
         uses: actions/upload-artifact@v4
