@@ -30,19 +30,19 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          sudo apt-get update -y
-          sudo apt-get install -y \
-          gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
-          binutils bc bison flex make \
-          python3 python3-distutils \
-          libssl-dev build-essential \
-          unzip xz-utils cpio \
-          device-tree-compiler \
-          git git-lfs curl wget
-          if ! command -v python2 >/dev/null 2>&1; then
-          sudo ln -sf /usr/bin/python3 /usr/bin/python2
-          fi
-
+         sudo apt-get update -y
+         sudo apt-get install -y \
+         gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi \
+         binutils bc bison flex make \
+         python3 \
+         libssl-dev build-essential \
+         unzip xz-utils cpio \
+         device-tree-compiler \
+         git git-lfs curl wget
+         if ! command -v python2 >/dev/null 2>&1; then
+         sudo ln -sf /usr/bin/python3 /usr/bin/python2
+         fi
+         
       - name: Clone Android Clang (AOSP)
         run: |
           git clone --depth=1 https://github.com/Kry9toN/clang.git clang
