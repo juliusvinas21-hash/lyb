@@ -7,11 +7,13 @@
 #
 
 # ---------------------------------------------------------------------
-# FIX: Kernel 4.14 + Clang
-# VDSO ARM64 MUST be linked with GNU ld (bfd), NOT lld.
-# This prevents: /bin/sh: 1: -maarch64elf: not found
+# FIX FINAL:
+# Kernel 4.14 + Clang
+# Kbuild uses *lowercase* `ld` in if_changed,ld
+# If `ld` is empty -> shell tries to execute "-maarch64elf"
+# We MUST override `ld`, not `LD`
 # ---------------------------------------------------------------------
-LD := $(CROSS_COMPILE)ld.bfd
+ld := $(CROSS_COMPILE)ld.bfd
 
 obj-vdso-s := note.o sigreturn.o
 obj-vdso-c := vgettimeofday.o
@@ -73,7 +75,7 @@ endef
 include/generated/vdso-offsets.h: $(obj)/vdso.so.dbg FORCE
 	$(call if_changed,vdsosym)
 
-# Assembly rules for the .S files
+# Assembly rules
 $(obj-vdso-s): %.o: %.S FORCE
 	$(call if_changed_dep,vdsoas)
 
@@ -86,7 +88,7 @@ quiet_cmd_vdsocc = VDSOC   $@
 quiet_cmd_vdsoas = VDSOA   $@
       cmd_vdsoas = $(CC) $(a_flags) -c -o $@ $<
 
-# Install commands for the unstripped file
+# Install commands
 quiet_cmd_vdso_install = INSTALL $@
       cmd_vdso_install = cp $(obj)/$@.dbg $(MODLIB)/vdso/$@
 
